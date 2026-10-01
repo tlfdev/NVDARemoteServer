@@ -4,12 +4,30 @@ services:
     build:
       context: .
       dockerfile: ./docker/Dockerfile
-    image: jmdaweb/nvda-remote-server:latest
-    restart: always
+    image: nvda-remote-server:local
+    restart: unless-stopped
+    ports:
+      - "6837:6837"
     volumes:
       - ./data:/data
-    network_mode: host
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    # each channel uses two threads, raise this if you expect many simultaneous sessions
+    pids_limit: 512
+    mem_limit: 256m
+    cpus: 1.0
     ulimits:
       nofile:
-        soft: 65536
-        hard: 65536
+        soft: 4096
+        hard: 4096
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -6,7 +6,7 @@ import socket
 import ssl
 import json
 import time
-import random
+import secrets
 import platform
 import codecs
 import struct
@@ -496,7 +496,14 @@ class Client(object):
 		while '\n' in data:
 			line, sep, data = data.partition('\n')
 			printDebugMessage("Protocol log, received from client " + str(self.id) + "\n" + line, 4)
-			self.parse(line)
+			try:
+				self.parse(line)
+			except Exception:
+				# A malformed message must never stop the server or channel loop
+				printDebugMessage("Error processing data from client " + str(self.id) + ", disconnecting", 1)
+				printError()
+				self.close()
+				return
 		self.buffer += data
 
 	def parse(self, line):
@@ -505,15 +512,20 @@ class Client(object):
 		except ValueError:
 			# We don't understand the parsed data, but we can send it to all clients in this channel
 			printError()
-			printDebugMessage("parse error, sending raw message", 0)
-			self.send_data_to_others(line + "\n")
+			# Clients which haven't joined a channel share the empty password, never relay their data
+			if self.password != "":
+				printDebugMessage("parse error, sending raw message", 0)
+				self.send_data_to_others(line + "\n")
 			return
-		if 'type' not in parsed:
+		if not isinstance(parsed, dict) or not isinstance(parsed.get('type'), str):
 			return
 		if self.password != "":
 			if len(list(self.server.clients.values()))==1:
 				self.send(type="nvda_not_connected")
 			else:
+				# The origin is always set by the server, clients can't impersonate other clients
+				parsed.pop('origin', None)
+				parsed.pop('self', None)
 				self.send_to_others(**parsed)
 			return
 		fn = 'do_' + parsed['type']
@@ -524,7 +536,7 @@ class Client(object):
 		return dict(id=self.id, connection_type=self.connection_type)
 
 	def do_join(self, obj):
-		if 'channel' not in obj or not obj['channel']:
+		if not isinstance(obj.get('channel'), str) or not obj['channel']:
 			self.send(type='error', error='invalid_parameters')
 			self.canClose = True
 			return
@@ -559,7 +571,7 @@ class Client(object):
 
 	def do_protocol_version(self, obj):
 		version = obj.get('version')
-		if not version:
+		if not isinstance(version, int) or isinstance(version, bool) or version < 1:
 			return
 		self.protocol_version = version
 
@@ -574,7 +586,7 @@ class Client(object):
 		printDebugMessage("Client " + str(self.id) + " generated a key", 2)
 
 	def generate_key(self):
-		return "".join([random.choice(string.digits) for i in range(9)])
+		return "".join([secrets.choice(string.digits) for i in range(9)])
 
 	def check_key(self, key):
 		check = False

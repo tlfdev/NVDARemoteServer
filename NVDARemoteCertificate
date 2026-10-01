@@ -1,5 +1,6 @@
 #!/bin/bash
 cd /usr/share/NVDARemoteServer
+umask 077
 while true
 do
 clear
@@ -27,7 +28,13 @@ rm -f server.pem
 mv key.key server.pem
 cat cert.crt >> server.pem
 rm -f cert.csr cert.crt
+# The private key must only be readable by the server user. Fall back to world readable permissions on systems without that user
+if chown nvdaremoteserver:nvdaremoteserver server.pem 2>/dev/null
+then
+chmod 600 server.pem
+else
 chmod 644 server.pem
+fi
 echo Certificate successfully created.
 echo You should restart the server for the changes to take effect on all connected clients.
 exit
